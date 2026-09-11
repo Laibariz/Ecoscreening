@@ -1,24 +1,56 @@
 import os
+from typing import Any, Dict, List, Optional
 import numpy as np
 import pandas as pd
 
-RISK_ACTIONS = {
-    "Low": ["Continue routine climate screening.", "Document assumptions and monitor key indicators."],
-    "Moderate": ["Add climate-resilient design measures.", "Conduct targeted site and hazard assessment."],
-    "High": ["Undertake a detailed climate risk and adaptation assessment.", "Quantify critical failure modes and adaptation costs.", "Engage relevant technical specialists."],
-    "Critical": ["Do not rely on screening alone.", "Commission a project-specific climate/disaster risk assessment.", "Review project design, siting, alternatives and residual risk before proceeding."],
+RISK_ACTIONS: Dict[str, List[str]] = {
+    "Low": [
+        "Continue routine climate screening.",
+        "Document assumptions and monitor key indicators.",
+    ],
+    "Moderate": [
+        "Add climate-resilient design measures.",
+        "Conduct targeted site and hazard assessment.",
+    ],
+    "High": [
+        "Undertake a detailed climate risk and adaptation assessment.",
+        "Quantify critical failure modes and adaptation costs.",
+        "Engage relevant technical specialists.",
+    ],
+    "Critical": [
+        "Do not rely on screening alone.",
+        "Commission a project-specific climate/disaster risk assessment.",
+        "Review project design, siting, alternatives and residual risk before proceeding.",
+    ],
 }
 
-HAZARD_PRESSURE = {
-    "Flood": 1.00, "Extreme heat": 0.95, "Drought": 0.90,
-    "Extreme precipitation": 0.95, "Landslide": 0.85,
-    "Storm": 0.80, "Wildfire": 0.70, "Sea-level rise": 0.90,
+HAZARD_PRESSURE: Dict[str, float] = {
+    "Flood": 1.00,
+    "Extreme heat": 0.95,
+    "Drought": 0.90,
+    "Extreme precipitation": 0.95,
+    "Landslide": 0.85,
+    "Storm": 0.80,
+    "Wildfire": 0.70,
+    "Sea-level rise": 0.90,
 }
 
-SCENARIO_MULTIPLIERS = {"Low change": 0.35, "Moderate change": 0.70, "High change": 1.10}
+SCENARIO_MULTIPLIERS: Dict[str, float] = {
+    "Low change": 0.35,
+    "Moderate change": 0.70,
+    "High change": 1.10,
+}
 
 
-def run_screening(sector, hazard, exposure, vulnerability, adaptive_capacity, sensitivity, criticality):
+def run_screening(
+    sector: str,
+    hazard: str,
+    exposure: float,
+    vulnerability: float,
+    adaptive_capacity: float,
+    sensitivity: float,
+    criticality: float,
+) -> Dict[str, Any]:
     """Compute an illustrative composite risk score and supporting factor breakdown."""
     hazard_pressure = HAZARD_PRESSURE.get(hazard, 0.80)
     weighted = {
@@ -26,24 +58,38 @@ def run_screening(sector, hazard, exposure, vulnerability, adaptive_capacity, se
         "Vulnerability": 0.20 * vulnerability,
         "Sensitivity": 0.18 * sensitivity,
         "Criticality": 0.16 * criticality,
-        "Adaptive capacity gap": 0.16 * (100 - adaptive_capacity),
-        "Hazard pressure": 0.08 * (hazard_pressure * 100),
+        "Adaptive capacity gap": 0.16 * (100.0 - adaptive_capacity),
+        "Hazard pressure": 0.08 * (hazard_pressure * 100.0),
     }
-    score = float(np.clip(sum(weighted.values()), 0, 100))
+    score = float(np.clip(sum(weighted.values()), 0.0, 100.0))
 
-    if score < 25:
+    if score < 25.0:
         band = "Low"
-    elif score < 50:
+    elif score < 50.0:
         band = "Moderate"
-    elif score < 75:
+    elif score < 75.0:
         band = "High"
     else:
         band = "Critical"
 
-    factors = pd.DataFrame({
-        "Factor": ["Exposure", "Vulnerability", "Sensitivity", "Criticality", "Adaptive capacity"],
-        "Score": [exposure, vulnerability, sensitivity, criticality, adaptive_capacity],
-    })
+    factors = pd.DataFrame(
+        {
+            "Factor": [
+                "Exposure",
+                "Vulnerability",
+                "Sensitivity",
+                "Criticality",
+                "Adaptive capacity",
+            ],
+            "Score": [
+                exposure,
+                vulnerability,
+                sensitivity,
+                criticality,
+                adaptive_capacity,
+            ],
+        }
+    )
 
     return {
         "risk_score": score,
@@ -56,82 +102,148 @@ def run_screening(sector, hazard, exposure, vulnerability, adaptive_capacity, se
     }
 
 
-def generate_simulation_data(years, baseline_rain, baseline_temp, scenario, seed=None):
+def generate_simulation_data(
+    years: int,
+    baseline_rain: float,
+    baseline_temp: float,
+    scenario: str,
+    seed: Optional[int] = None,
+) -> pd.DataFrame:
     """Illustrative temperature/precipitation trajectory for a single scenario."""
-    m = SCENARIO_MULTIPLIERS[scenario]
+    m = SCENARIO_MULTIPLIERS.get(scenario, 0.70)
     t = np.arange(1, int(years) + 1)
-    rng = np.random.default_rng(seed if seed is not None else abs(hash((years, baseline_rain, baseline_temp, scenario))) % (2**32))
+
+    if seed is None:
+        seed = abs(hash((years, baseline_rain, baseline_temp, scenario))) % (2**32)
+
+    rng = np.random.default_rng(seed)
     noise_t = rng.normal(0, 0.08, size=len(t))
     noise_p = rng.normal(0, 0.02, size=len(t))
-    temperature = baseline_temp + (0.025 * m) * t + 0.15 * np.sin(t / 2) + noise_t
-    precipitation = baseline_rain * (1 + 0.003 * m * t + 0.08 * np.sin(t / 2.8)) * (1 + noise_p)
-    return pd.DataFrame({
-        "Year": t,
-        "Temperature_C": np.round(temperature, 2),
-        "Precipitation_mm": np.round(precipitation, 1),
-    })
+
+    temperature = baseline_temp + (0.025 * m) * t + 0.15 * np.sin(t / 2.0) + noise_t
+    precipitation = baseline_rain * (1.0 + 0.003 * m * t + 0.08 * np.sin(t / 2.8)) * (1.0 + noise_p)
+
+    return pd.DataFrame(
+        {
+            "Year": t,
+            "Temperature_C": np.round(temperature, 2),
+            "Precipitation_mm": np.round(precipitation, 1),
+        }
+    )
 
 
-def generate_multi_scenario_data(years, baseline_rain, baseline_temp):
+def generate_multi_scenario_data(
+    years: int, baseline_rain: float, baseline_temp: float
+) -> pd.DataFrame:
     """Same simulation run across all three illustrative scenarios, stacked for comparison charts."""
     frames = []
     for scenario in SCENARIO_MULTIPLIERS:
-        df = generate_simulation_data(years, baseline_rain, baseline_temp, scenario, seed=hash(scenario) % (2**32))
+        df = generate_simulation_data(
+            years, baseline_rain, baseline_temp, scenario, seed=hash(scenario) % (2**32)
+        )
         df["Scenario"] = scenario
         frames.append(df)
     return pd.concat(frames, ignore_index=True)
 
 
-def calculate_ghg(electricity_mwh, fuel_l, travel_km, ef_elec, ef_fuel, ef_travel):
-    electricity = electricity_mwh * ef_elec
-    fuel = fuel_l * ef_fuel / 1000
-    travel = travel_km * ef_travel / 1000
-    return {"total_tco2e": electricity + fuel + travel, "breakdown": [
-        {"Source": "Electricity", "tCO2e": electricity},
-        {"Source": "Liquid fuel", "tCO2e": fuel},
-        {"Source": "Vehicle travel", "tCO2e": travel},
-    ]}
+def calculate_ghg(
+    electricity_mwh: float,
+    fuel_l: float,
+    travel_km: float,
+    ef_elec: float,
+    ef_fuel: float,
+    ef_travel: float,
+) -> Dict[str, Any]:
+    """Calculate GHG footprint in metric tons of CO2 equivalent (tCO2e)."""
+    electricity = round(electricity_mwh * ef_elec, 4)
+    fuel = round((fuel_l * ef_fuel) / 1000.0, 4)
+    travel = round((travel_km * ef_travel) / 1000.0, 4)
+    total = round(electricity + fuel + travel, 4)
+
+    return {
+        "total_tco2e": total,
+        "breakdown": [
+            {"Source": "Electricity", "tCO2e": electricity},
+            {"Source": "Liquid fuel", "tCO2e": fuel},
+            {"Source": "Vehicle travel", "tCO2e": travel},
+        ],
+    }
 
 
-def calculate_shadow_carbon_price(annual_tco2e, years, price_usd_per_tco2e):
-    return float(annual_tco2e * years * price_usd_per_tco2e)
+def calculate_shadow_carbon_price(
+    annual_tco2e: float, years: int, price_usd_per_tco2e: float
+) -> float:
+    """Calculate unescalated aggregate shadow carbon valuation."""
+    return float(round(annual_tco2e * years * price_usd_per_tco2e, 2))
 
 
-def calculate_carbon_cost_trajectory(annual_tco2e, years, price_usd_per_tco2e, price_escalation_pct=0.0):
+def calculate_carbon_cost_trajectory(
+    annual_tco2e: float,
+    years: int,
+    price_usd_per_tco2e: float,
+    price_escalation_pct: float = 0.0,
+) -> pd.DataFrame:
     """Year-by-year (optionally escalating) shadow carbon cost, for a trend chart."""
     t = np.arange(1, int(years) + 1)
-    price_path = price_usd_per_tco2e * (1 + price_escalation_pct / 100) ** (t - 1)
+    price_path = price_usd_per_tco2e * ((1.0 + price_escalation_pct / 100.0) ** (t - 1))
     annual_cost = annual_tco2e * price_path
     cumulative_cost = np.cumsum(annual_cost)
-    return pd.DataFrame({
-        "Year": t,
-        "Carbon price (USD/tCO2e)": np.round(price_path, 2),
-        "Annual carbon cost (USD)": np.round(annual_cost, 0),
-        "Cumulative carbon cost (USD)": np.round(cumulative_cost, 0),
-    })
+
+    return pd.DataFrame(
+        {
+            "Year": t,
+            "Carbon price (USD/tCO2e)": np.round(price_path, 2),
+            "Annual carbon cost (USD)": np.round(annual_cost, 0),
+            "Cumulative carbon cost (USD)": np.round(cumulative_cost, 0),
+        }
+    )
 
 
-def calculate_climate_cobenefit(mitigation, adaptation, social):
-    return float(0.40 * mitigation + 0.40 * adaptation + 0.20 * social)
+def calculate_climate_cobenefit(
+    mitigation: float, adaptation: float, social: float
+) -> float:
+    """Compute composite cobenefit score based on weighted impact indicators."""
+    return float(round(0.40 * mitigation + 0.40 * adaptation + 0.20 * social, 2))
 
 
-def generate_sector_stress_data(years, intensity, resilience, sectors):
+def generate_sector_stress_data(
+    years: int, intensity: float, resilience: float, sectors: List[str]
+) -> pd.DataFrame:
     """Illustrative climate-stress trajectory for one or more sectors, for comparison charts."""
     t = np.arange(1, int(years) + 1)
+    sector_offset = {
+        "Agriculture": 4,
+        "Energy": 0,
+        "Health": -3,
+        "Transportation": 2,
+        "Water": 6,
+    }
     frames = []
-    sector_offset = {"Agriculture": 4, "Energy": 0, "Health": -3, "Transportation": 2, "Water": 6}
     for s in sectors:
         offset = sector_offset.get(s, 0)
-        risk = np.clip(intensity + offset + np.linspace(0, 20, len(t)) - resilience * 0.4, 0, 100)
+        risk = np.clip(
+            intensity + offset + np.linspace(0, 20, len(t)) - resilience * 0.4, 0.0, 100.0
+        )
         frames.append(pd.DataFrame({"Year": t, "Risk_Index": np.round(risk, 1), "Sector": s}))
+
     return pd.concat(frames, ignore_index=True)
 
 
-def build_deterministic_summary(project_name, sector, province, mountain_system, screening, priorities):
+def build_deterministic_summary(
+    project_name: str,
+    sector: str,
+    province: str,
+    mountain_system: str,
+    screening: Optional[Dict[str, Any]],
+    priorities: List[str],
+) -> str:
+    """Fallback Markdown summary when LLM generation is unavailable or unconfigured."""
     if not screening:
         return "Run the climate risk screening first."
+
     priorities_text = "\n".join(f"- {p}" for p in priorities)
-    actions_text = "\n".join("- " + a for a in screening["actions"])
+    actions_text = "\n".join(f"- {a}" for a in screening["actions"])
+
     return f"""### Screening Summary
 
 **Project:** {project_name}
@@ -156,7 +268,14 @@ def build_deterministic_summary(project_name, sector, province, mountain_system,
 """
 
 
-def build_ai_summary(project_name, sector, province, mountain_system, screening, priorities):
+def build_ai_summary(
+    project_name: str,
+    sector: str,
+    province: str,
+    mountain_system: str,
+    screening: Optional[Dict[str, Any]],
+    priorities: List[str],
+) -> str:
     """Generate an AI explanation with Groq. Falls back to a deterministic summary if no key is configured."""
     if not screening:
         return "Run the climate risk screening first."
@@ -164,16 +283,24 @@ def build_ai_summary(project_name, sector, province, mountain_system, screening,
     api_key = os.getenv("GROQ_API_KEY")
     try:
         import streamlit as st
+
         api_key = api_key or st.secrets.get("GROQ_API_KEY")
     except Exception:
         pass
 
     if not api_key:
-        return build_deterministic_summary(project_name, sector, province, mountain_system, screening, priorities) + "\n\n**Groq AI note:** Add `GROQ_API_KEY` to Streamlit Secrets to enable the LLM-generated explanation."
+        return (
+            build_deterministic_summary(
+                project_name, sector, province, mountain_system, screening, priorities
+            )
+            + "\n\n**Groq AI note:** Add `GROQ_API_KEY` to Streamlit Secrets to enable the LLM-generated explanation."
+        )
 
-    from groq import Groq
-    client = Groq(api_key=api_key)
-    prompt = f"""
+    try:
+        from groq import Groq
+
+        client = Groq(api_key=api_key)
+        prompt = f"""
 You are an environmental and climate-risk decision-support assistant for Pakistan.
 Distinguish screening-level findings from verified technical findings. Do not invent site measurements,
 forecasts, regulations, legal thresholds, citations, or site-specific hazards. Use cautious language.
@@ -199,13 +326,26 @@ Keep it practical for early-stage development planning. Emphasize the shift from
 toward "consider climate risks during planning". State clearly that this is not an EIA, engineering design, regulatory approval,
 or site-specific forecast.
 """
-    response = client.chat.completions.create(
-        model="openai/gpt-oss-120b",
-        messages=[
-            {"role": "system", "content": "You provide careful, evidence-oriented climate-risk decision support."},
-            {"role": "user", "content": prompt},
-        ],
-        temperature=0.2,
-        max_tokens=1800,
-    )
-    return response.choices[0].message.content
+        response = client.chat.completions.create(
+            model="openai/gpt-oss-120b",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You provide careful, evidence-oriented climate-risk decision support.",
+                },
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.2,
+            max_tokens=1800,
+        )
+        return response.choices[0].message.content or build_deterministic_summary(
+            project_name, sector, province, mountain_system, screening, priorities
+        )
+    except Exception as err:
+        return (
+            build_deterministic_summary(
+                project_name, sector, province, mountain_system, screening, priorities
+            )
+            + f"\n\n**Groq AI note:** LLM generation failed ({str(err)}). Reverted to deterministic summary."
+        )
+
